@@ -38,7 +38,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Height = msg.Height
 		if !m.HistoryReady {
 			m.HistoryViewport.SetWidth(80)
-			m.HistoryViewport.SetHeight(8)
+			m.HistoryViewport.SetHeight(9)
 			m.HistoryReady = true
 			// 同步已有的历史记录（例如从文件导入的）
 			if len(m.IterationHistory) > 1 {

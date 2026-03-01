@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shopspring/decimal"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/shopspring/decimal"
 	"github.com/sshelll/bayesianvisual/internal/styles"
 )
 
@@ -358,7 +358,7 @@ func (m Model) renderBayesianDiagram() string {
 	// 计算标签需要的宽度，确保标签在矩形下方居中
 	// leftWidth 对应左侧矩形，rightWidth 对应右侧矩形
 	// 加上边框和分隔符的宽度：左边框(1) + leftWidth + 分隔符(1) + rightWidth + 右边框(1)
-	leftLabelWidth := leftWidth + 1  // 包含左边框
+	leftLabelWidth := leftWidth + 1   // 包含左边框
 	rightLabelWidth := rightWidth + 2 // 包含分隔符和右边框
 
 	// 只在宽度足够时才设置固定宽度并居中，避免文本换行
@@ -473,7 +473,7 @@ func (m Model) buildHistoryContent() string {
 	// 渲染所有历史记录（排除最新的一条）
 	endIdx := len(m.IterationHistory) - 1
 
-	for i := 0; i < endIdx; i++ {
+	for i := range endIdx {
 		record := m.IterationHistory[i]
 		iterNum := i + 1
 
@@ -494,8 +494,12 @@ func (m Model) buildHistoryContent() string {
 
 		// Likelihood 详情
 		likelihoodText := styles.HistoryDetailStyle.Render(
-			fmt.Sprintf("  P(B|A)=%s%%, P(B|¬A)=%s%%",
-				formatPercent(record.LikelihoodA), formatPercent(record.LikelihoodNotA)))
+			fmt.Sprintf("  P(B|A)=%s%%, P(B|¬A)=%s%%, P(A)=%s%%",
+				formatPercent(record.LikelihoodA),
+				formatPercent(record.LikelihoodNotA),
+				formatPercent(record.PriorA),
+			),
+		)
 		parts = append(parts, likelihoodText)
 	}
 

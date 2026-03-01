@@ -37,6 +37,12 @@ git clone https://github.com/sshelll/bayesianvisual.git
 go install ./cmd/bayesianvisual
 ```
 
+or simply:
+
+```bash
+make install
+```
+
 ## Usage
 
 Run the application:

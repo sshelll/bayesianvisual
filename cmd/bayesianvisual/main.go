@@ -31,7 +31,7 @@ func run(cmd *cobra.Command, args []string) {
 		PriorA:         decimal.NewFromFloat(0.05), // P(A) = 5%
 		LikelihoodA:    decimal.NewFromFloat(0.95), // P(B|A) = 95%
 		LikelihoodNotA: decimal.NewFromFloat(0.2),  // P(B|¬A) = 20%
-		SquareSize:     15,                         // 固定正方形大小（可调整）
+		SquareSize:     18,                         // 固定正方形大小（可调整）
 		State:          model.StateViewing,
 	}
 

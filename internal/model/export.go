@@ -3,6 +3,8 @@ package model
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 // ExportData 导出数据结构
@@ -11,14 +13,24 @@ type ExportData struct {
 	IterationHistory []IterationRecord `json:"iteration_history"`
 }
 
+// expandPath 展开路径中的 ~ 为用户 home 目录
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
+}
+
 // ExportToJSON 导出迭代历史到 JSON 文件
-func (m *Model) ExportToJSON(filepath string) error {
+func (m *Model) ExportToJSON(path string) error {
 	data := ExportData{
 		Version:          "1.0",
 		IterationHistory: m.IterationHistory,
 	}
 
-	file, err := os.Create(filepath)
+	file, err := os.Create(expandPath(path))
 	if err != nil {
 		return err
 	}
@@ -30,8 +42,8 @@ func (m *Model) ExportToJSON(filepath string) error {
 }
 
 // LoadFromJSON 从 JSON 文件加载迭代历史
-func (m *Model) LoadFromJSON(filepath string) error {
-	file, err := os.Open(filepath)
+func (m *Model) LoadFromJSON(path string) error {
+	file, err := os.Open(expandPath(path))
 	if err != nil {
 		return err
 	}
