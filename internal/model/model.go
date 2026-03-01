@@ -2,6 +2,7 @@ package model
 
 import (
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/shopspring/decimal"
 	"github.com/sshelll/bayesianvisual/internal/bayesian"
@@ -20,6 +21,7 @@ const (
 	StateInputDescB
 	StateIterationDescChoice      // 迭代时选择是否使用相同描述
 	StateNewCalculationDescChoice // 新运算时选择是否自定义描述
+	StateInputExportPath          // 输入导出路径
 )
 
 // IterationRecord 迭代记录
@@ -65,6 +67,9 @@ type Model struct {
 	IterationDescCursor int // 0: 使用相同描述, 1: 输入新描述
 	// 新运算描述选择
 	NewCalcDescCursor int // 0: 使用默认 A/B, 1: 输入自定义描述
+	// 历史记录视口
+	HistoryViewport viewport.Model
+	HistoryReady    bool
 }
 
 // Init 初始化
@@ -93,4 +98,12 @@ func (m *Model) AddIterationRecord() {
 		DescB:          m.DescB,
 	}
 	m.IterationHistory = append(m.IterationHistory, record)
+	m.SyncHistoryViewport()
+}
+
+// SyncHistoryViewport 同步历史记录到 viewport
+func (m *Model) SyncHistoryViewport() {
+	m.HistoryViewport.SetContent(m.buildHistoryContent())
+	// 自动滚动到底部
+	m.HistoryViewport.GotoBottom()
 }

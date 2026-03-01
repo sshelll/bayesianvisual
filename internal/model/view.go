@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/shopspring/decimal"
 	tea "charm.land/bubbletea/v2"
@@ -32,7 +33,6 @@ func formatPercent(value decimal.Decimal) string {
 		}
 
 		// 找到第一个非零数字的位置
-		firstNonZero := -1
 		significantDigits := 0
 
 		for i, ch := range str {
@@ -40,9 +40,6 @@ func formatPercent(value decimal.Decimal) string {
 				continue
 			}
 			if ch != '0' {
-				if firstNonZero == -1 {
-					firstNonZero = i
-				}
 				significantDigits++
 				// 保留 2 位有效数字
 				if significantDigits >= 2 {
@@ -80,7 +77,7 @@ func (m Model) View() tea.View {
 		content = m.renderViewing()
 	case StateMenu:
 		content = m.renderMenu()
-	case StateInputPriorA, StateInputLikelihoodA, StateInputLikelihoodNotA, StateInputDescA, StateInputDescB:
+	case StateInputPriorA, StateInputLikelihoodA, StateInputLikelihoodNotA, StateInputDescA, StateInputDescB, StateInputExportPath:
 		content = m.renderInput()
 	case StateIterationDescChoice:
 		content = m.renderIterationDescChoice()
@@ -94,7 +91,18 @@ func (m Model) View() tea.View {
 
 func (m Model) renderViewing() string {
 	diagram := m.renderBayesianDiagram()
+
+	// 如果有历史记录，在下方显示
+	var historyPanel string
+	if len(m.IterationHistory) > 1 {
+		historyPanel = m.renderHistoryPanel()
+	}
+
 	footer := styles.FooterStyle.Render("Press n/enter/space for new calculation • Press q to quit")
+
+	if historyPanel != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, diagram, historyPanel, footer)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, diagram, footer)
 }
 
@@ -104,6 +112,7 @@ func (m Model) renderMenu() string {
 	menuItems := []string{
 		"Iterative Calculation (use previous posterior as new prior)",
 		"New Calculation (start from scratch)",
+		"Export Iteration History (save to JSON file)",
 	}
 
 	var items []string
@@ -128,15 +137,11 @@ func (m Model) renderIterationDescChoice() string {
 	title := styles.TitleStyle.Render("📊 Iterative Calculation - Event Descriptions")
 
 	// 显示当前描述
-	currentDesc := lipgloss.NewStyle().
-		Foreground(styles.AccentColor).
-		Italic(true).
-		Render(fmt.Sprintf("Current: A=\"%s\", B=\"%s\"", m.DescA, m.DescB))
+	currentDesc := styles.DescSentenceStyle.Render(
+		fmt.Sprintf("Current: A=\"%s\", B=\"%s\"", m.DescA, m.DescB))
 
 	// 提示信息
-	hint := lipgloss.NewStyle().
-		Foreground(styles.DimTextColor).
-		Italic(true).
+	hint := styles.HistoryDetailStyle.Italic(true).
 		Render("Note: Event A remains the same in iteration, only B changes")
 
 	menuItems := []string{
@@ -165,9 +170,7 @@ func (m Model) renderIterationDescChoice() string {
 func (m Model) renderNewCalculationDescChoice() string {
 	title := styles.TitleStyle.Render("📊 New Calculation - Event Descriptions")
 
-	hint := lipgloss.NewStyle().
-		Foreground(styles.DimTextColor).
-		Italic(true).
+	hint := styles.HistoryDetailStyle.Italic(true).
 		Render("Choose how to describe events A and B")
 
 	menuItems := []string{
@@ -199,24 +202,49 @@ func (m Model) renderInput() string {
 	switch m.State {
 	case StateInputPriorA:
 		title = "📊 Enter Prior Probability"
-		prompt = "P(A) - Prior probability:"
+		if m.DescA != "" && m.DescA != "A" {
+			prompt = fmt.Sprintf("P(A) - Prior probability (probability of \"%s\"):", m.DescA)
+		} else {
+			prompt = "P(A) - Prior probability (probability of A):"
+		}
 	case StateInputLikelihoodA:
 		if m.IterativeMode {
 			title = "📊 Iterative Calculation"
-			prompt = fmt.Sprintf("Previous P(A|B) = %s%% (used as new prior)\nP(B|A) - Likelihood:", formatPercent(m.TempPriorA))
+			var likelihoodExplanation string
+			// 如果有自定义描述（不是默认的 A/B），显示详细说明
+			if m.hasCustomDesc() {
+				likelihoodExplanation = fmt.Sprintf("probability of \"%s\" given \"%s\"", m.DescB, m.DescA)
+			} else {
+				likelihoodExplanation = "probability of B given A"
+			}
+			prompt = fmt.Sprintf("Previous P(A|B) = %s%% (used as new prior)\nP(B|A) - Likelihood (%s):",
+				formatPercent(m.TempPriorA), likelihoodExplanation)
 		} else {
 			title = "📊 Enter Likelihood"
-			prompt = "P(B|A) - Likelihood given A:"
+			// 如果有自定义描述（不是默认的 A/B），显示详细说明
+			if m.hasCustomDesc() {
+				prompt = fmt.Sprintf("P(B|A) - Likelihood (probability of \"%s\" given \"%s\"):", m.DescB, m.DescA)
+			} else {
+				prompt = "P(B|A) - Likelihood (probability of B given A):"
+			}
 		}
 	case StateInputLikelihoodNotA:
 		title = "📊 Enter Likelihood"
-		prompt = "P(B|¬A) - Likelihood given not A:"
+		// 如果有自定义描述（不是默认的 A/B），显示详细说明
+		if m.hasCustomDesc() {
+			prompt = fmt.Sprintf("P(B|¬A) - Likelihood (probability of \"%s\" given NOT \"%s\"):", m.DescB, m.DescA)
+		} else {
+			prompt = "P(B|¬A) - Likelihood (probability of B given NOT A):"
+		}
 	case StateInputDescA:
 		title = "📊 Customize Event A"
 		prompt = "Describe what event A represents:"
 	case StateInputDescB:
 		title = "📊 Customize Event B"
 		prompt = "Describe what event B represents:"
+	case StateInputExportPath:
+		title = "📊 Export Iteration History"
+		prompt = "Enter file path to save (format: JSON):"
 	}
 
 	titleRendered := styles.TitleStyle.Render(title)
@@ -237,6 +265,11 @@ func (m Model) renderInput() string {
 	parts = append(parts, footer)
 
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// hasCustomDesc 判断是否有自定义事件描述（非默认 A/B）
+func (m Model) hasCustomDesc() bool {
+	return m.DescA != "" && m.DescB != "" && !(m.DescA == "A" && m.DescB == "B")
 }
 
 func (m Model) renderBayesianDiagram() string {
@@ -378,115 +411,112 @@ func (m Model) renderBox(width, height int, filled bool, label string) string {
 }
 
 func (m Model) renderVerticalDivider(height int) string {
-	divider := ""
-	for range height {
-		divider += "│\n"
+	var b strings.Builder
+	for i := range height {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteRune('│')
 	}
-	return styles.DividerStyle.Render(divider[:len(divider)-1])
+	return styles.DividerStyle.Render(b.String())
 }
 
 func (m Model) renderInfoPanel() string {
 	var parts []string
 
 	// 标题：当前计算
-	currentTitle := lipgloss.NewStyle().
-		Foreground(styles.AccentColor).
-		Bold(true).
-		Render("Current Calculation")
+	currentTitle := styles.InfoSectionTitle.Render("Current Calculation")
 	parts = append(parts, currentTitle)
 
 	// 如果有自定义描述，显示描述性句子
 	if m.DescA != "" && m.DescB != "" {
 		posterior := m.CalculatePosterior()
-		descStyle := lipgloss.NewStyle().
-			Foreground(styles.AccentColor).
-			Italic(true).
-			Width(50)
-
 		sentence := fmt.Sprintf("Given that \"%s\", the probability that \"%s\" is %s%%",
 			m.DescB, m.DescA, formatPercent(posterior))
-		descRendered := descStyle.Render(sentence)
-		parts = append(parts, descRendered)
+		parts = append(parts, styles.DescSentenceStyle.Render(sentence))
 	}
 
-	// 左侧先验概率
+	parts = append(parts, "") // 空行分隔
+
+	// 先验概率
 	leftLabel := styles.LabelStyle.Render("Prior P(A):")
 	leftValue := styles.ValueStyle.Render(fmt.Sprintf("%s%%", formatPercent(m.PriorA)))
 	leftInfo := lipgloss.JoinHorizontal(lipgloss.Left, leftLabel, " ", leftValue)
 
-	// 似然概率信息
+	// 似然概率
 	likelihoodLabel := styles.LabelStyle.Render("Likelihood:")
 	likelihoodLeft := styles.ValueStyle.Render(fmt.Sprintf("P(B|A)=%s%%", formatPercent(m.LikelihoodA)))
 	likelihoodRight := styles.ValueStyle.Render(fmt.Sprintf("P(B|¬A)=%s%%", formatPercent(m.LikelihoodNotA)))
 	likelihoodInfo := lipgloss.JoinHorizontal(lipgloss.Left,
 		likelihoodLabel, " ", likelihoodLeft, "  ", likelihoodRight)
 
-	// 后验概率信息
+	parts = append(parts, leftInfo, likelihoodInfo)
+
+	parts = append(parts, "") // 空行分隔
+
+	// 后验概率（用醒目的样式强调结果）
 	posterior := m.CalculatePosterior()
 	posteriorLabel := styles.LabelStyle.Render("Posterior:")
-	posteriorValue := styles.ValueStyle.Render(fmt.Sprintf("P(A|B) = %s%%", formatPercent(posterior)))
+	posteriorValue := styles.PosteriorValueStyle.Render(fmt.Sprintf("P(A|B) = %s%%", formatPercent(posterior)))
 	posteriorInfo := lipgloss.JoinHorizontal(lipgloss.Left, posteriorLabel, " ", posteriorValue)
-
-	// 组合当前计算信息
-	parts = append(parts, leftInfo, likelihoodInfo, posteriorInfo)
-
-	// 如果有迭代历史，显示历史记录
-	if len(m.IterationHistory) > 0 {
-		parts = append(parts, "") // 空行分隔
-
-		historyTitle := lipgloss.NewStyle().
-			Foreground(styles.AccentColor).
-			Bold(true).
-			Render(fmt.Sprintf("Iteration History (%d)", len(m.IterationHistory)))
-		parts = append(parts, historyTitle)
-
-		// 显示最近的几条历史记录（最多5条）
-		maxDisplay := 5
-		startIdx := 0
-		if len(m.IterationHistory) > maxDisplay {
-			startIdx = len(m.IterationHistory) - maxDisplay
-		}
-
-		for i := startIdx; i < len(m.IterationHistory); i++ {
-			record := m.IterationHistory[i]
-			iterNum := i + 1
-
-			// 迭代编号
-			iterLabel := lipgloss.NewStyle().
-				Foreground(styles.HighlightColor).
-				Bold(true).
-				Render(fmt.Sprintf("#%d", iterNum))
-
-			// 如果有描述，显示描述
-			if record.DescA != "" && record.DescB != "" {
-				descText := lipgloss.NewStyle().
-					Foreground(styles.DimTextColor).
-					Italic(true).
-					Width(50).
-					Render(fmt.Sprintf("Given \"%s\" → \"%s\": %s%%",
-						record.DescB, record.DescA, formatPercent(record.Posterior)))
-				parts = append(parts, lipgloss.JoinHorizontal(lipgloss.Left, iterLabel, " ", descText))
-			} else {
-				// 没有描述，显示概率
-				probText := lipgloss.NewStyle().
-					Foreground(styles.DimTextColor).
-					Render(fmt.Sprintf("P(A)=%s%% → P(A|B)=%s%%",
-						formatPercent(record.PriorA), formatPercent(record.Posterior)))
-				parts = append(parts, lipgloss.JoinHorizontal(lipgloss.Left, iterLabel, " ", probText))
-			}
-		}
-
-		// 如果历史记录超过显示数量，提示
-		if len(m.IterationHistory) > maxDisplay {
-			moreText := lipgloss.NewStyle().
-				Foreground(styles.DimTextColor).
-				Italic(true).
-				Render(fmt.Sprintf("... and %d more", len(m.IterationHistory)-maxDisplay))
-			parts = append(parts, moreText)
-		}
-	}
+	parts = append(parts, posteriorInfo)
 
 	allInfo := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	return styles.InfoPanelStyle.Render(allInfo)
+}
+
+// buildHistoryContent 构建历史记录内容字符串（不含标题）
+func (m Model) buildHistoryContent() string {
+	var parts []string
+
+	// 渲染所有历史记录（排除最新的一条）
+	endIdx := len(m.IterationHistory) - 1
+
+	for i := 0; i < endIdx; i++ {
+		record := m.IterationHistory[i]
+		iterNum := i + 1
+
+		iterLabel := styles.IterLabelStyle.Render(fmt.Sprintf("#%d", iterNum))
+
+		// 主要信息行
+		var mainText string
+		if record.DescA != "" && record.DescB != "" {
+			mainText = styles.HistoryDescTextStyle.Render(
+				fmt.Sprintf("Given \"%s\" → \"%s\": %s%%",
+					record.DescB, record.DescA, formatPercent(record.Posterior)))
+		} else {
+			mainText = styles.HistoryMainTextStyle.Render(
+				fmt.Sprintf("P(A)=%s%% → P(A|B)=%s%%",
+					formatPercent(record.PriorA), formatPercent(record.Posterior)))
+		}
+		parts = append(parts, lipgloss.JoinHorizontal(lipgloss.Left, iterLabel, " ", mainText))
+
+		// Likelihood 详情
+		likelihoodText := styles.HistoryDetailStyle.Render(
+			fmt.Sprintf("  P(B|A)=%s%%, P(B|¬A)=%s%%",
+				formatPercent(record.LikelihoodA), formatPercent(record.LikelihoodNotA)))
+		parts = append(parts, likelihoodText)
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// renderHistoryPanel 渲染历史记录面板（独立显示在下方）
+func (m Model) renderHistoryPanel() string {
+	// 水平分隔线
+	divider := styles.HorizontalDividerStyle.Render(strings.Repeat("─", 60))
+
+	// 标题始终置顶，不随 viewport 滚动
+	historyTitle := styles.InfoSectionTitle.Render(
+		fmt.Sprintf("Iteration History (%d)", len(m.IterationHistory)-1))
+	scrollHint := lipgloss.NewStyle().
+		Foreground(styles.DimTextColor).
+		Italic(true).
+		Render("  ↑/↓ to scroll")
+
+	titleLine := lipgloss.JoinHorizontal(lipgloss.Bottom, historyTitle, scrollHint)
+
+	content := lipgloss.JoinVertical(lipgloss.Left, divider, titleLine, m.HistoryViewport.View())
+	return styles.HistoryPanelStyle.Render(content)
 }
