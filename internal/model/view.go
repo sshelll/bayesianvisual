@@ -403,7 +403,7 @@ func (m Model) renderInfoPanel() string {
 			Italic(true).
 			Width(50)
 
-		sentence := fmt.Sprintf("Given that %s, the probability that %s is %s%%",
+		sentence := fmt.Sprintf("Given that \"%s\", the probability that \"%s\" is %s%%",
 			m.DescB, m.DescA, formatPercent(posterior))
 		descRendered := descStyle.Render(sentence)
 		parts = append(parts, descRendered)
@@ -463,7 +463,7 @@ func (m Model) renderInfoPanel() string {
 					Foreground(styles.DimTextColor).
 					Italic(true).
 					Width(50).
-					Render(fmt.Sprintf("Given %s → %s: %s%%",
+					Render(fmt.Sprintf("Given \"%s\" → \"%s\": %s%%",
 						record.DescB, record.DescA, formatPercent(record.Posterior)))
 				parts = append(parts, lipgloss.JoinHorizontal(lipgloss.Left, iterLabel, " ", descText))
 			} else {
