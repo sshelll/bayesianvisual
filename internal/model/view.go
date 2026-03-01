@@ -3,10 +3,68 @@ package model
 import (
 	"fmt"
 
+	"github.com/shopspring/decimal"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/sshelll/bayesianvisual/internal/styles"
 )
+
+// formatPercent 格式化百分比，最多保留 4 位小数，自动去掉尾部的 0
+// 对于极小值，保留至少 2 位有效数字，避免显示为 0
+func formatPercent(value float64) string {
+	// 转换为百分比
+	percent := decimal.NewFromFloat(value * 100)
+
+	// 四舍五入到 4 位小数
+	rounded := percent.Round(4)
+
+	// 如果四舍五入后变成 0 或非常接近 0，说明原始值太小
+	// 需要保留更多位数以显示至少 2 位有效数字
+	if rounded.IsZero() || rounded.Abs().LessThan(decimal.NewFromFloat(0.0001)) {
+		// 对于极小值，找到前 2 位有效数字的位置
+		// 使用字符串处理来实现
+		str := percent.String()
+
+		// 如果是负数，保留负号
+		if percent.IsNegative() {
+			str = str[1:]
+		}
+
+		// 找到第一个非零数字的位置
+		firstNonZero := -1
+		significantDigits := 0
+
+		for i, ch := range str {
+			if ch == '.' {
+				continue
+			}
+			if ch != '0' {
+				if firstNonZero == -1 {
+					firstNonZero = i
+				}
+				significantDigits++
+				// 保留 2 位有效数字
+				if significantDigits >= 2 {
+					// 返回到当前位置的字符串
+					result := str[:i+1]
+					if percent.IsNegative() {
+						result = "-" + result
+					}
+					return result
+				}
+			}
+		}
+
+		// 如果只有 1 位或 0 位有效数字，返回原始字符串
+		if percent.IsNegative() {
+			return "-" + str
+		}
+		return str
+	}
+
+	// 正常情况：使用 String() 自动去掉尾部的 0
+	return rounded.String()
+}
 
 // View 渲染视图
 func (m Model) View() tea.View {
@@ -158,7 +216,7 @@ func (m Model) renderBayesianDiagram() string {
 	}
 	if leftBottomHeight > 0 {
 		leftParts = append(leftParts, m.renderBox(leftWidth, leftBottomHeight, true,
-			fmt.Sprintf("P(B|A)\n%.0f%%", m.LikelihoodA*100)))
+			fmt.Sprintf("P(B|A)\n%s%%", formatPercent(m.LikelihoodA))))
 	}
 
 	if rightTopHeight > 0 {
@@ -166,7 +224,7 @@ func (m Model) renderBayesianDiagram() string {
 	}
 	if rightBottomHeight > 0 {
 		rightParts = append(rightParts, m.renderBox(rightWidth, rightBottomHeight, true,
-			fmt.Sprintf("P(B|¬A)\n%.0f%%", m.LikelihoodNotA*100)))
+			fmt.Sprintf("P(B|¬A)\n%s%%", formatPercent(m.LikelihoodNotA))))
 	}
 
 	leftSide := lipgloss.JoinVertical(lipgloss.Left, leftParts...)
@@ -183,8 +241,8 @@ func (m Model) renderBayesianDiagram() string {
 
 	// 创建底部标签（在边框外侧）
 	// 每个标签对齐到对应矩形的下方
-	leftLabel := fmt.Sprintf("P(A)=%.0f%%", m.PriorA*100)
-	rightLabel := fmt.Sprintf("P(¬A)=%.0f%%", (1-m.PriorA)*100)
+	leftLabel := fmt.Sprintf("P(A)=%s%%", formatPercent(m.PriorA))
+	rightLabel := fmt.Sprintf("P(¬A)=%s%%", formatPercent(1-m.PriorA))
 
 	// 计算标签需要的宽度，确保标签在矩形下方居中
 	// leftWidth 对应左侧矩形，rightWidth 对应右侧矩形
@@ -192,17 +250,18 @@ func (m Model) renderBayesianDiagram() string {
 	leftLabelWidth := leftWidth + 1  // 包含左边框
 	rightLabelWidth := rightWidth + 2 // 包含分隔符和右边框
 
-	leftLabelStyled := lipgloss.NewStyle().
-		Width(leftLabelWidth).
-		Align(lipgloss.Center).
-		Foreground(styles.TextColor).
-		Render(leftLabel)
+	// 只在宽度足够时才设置固定宽度并居中，避免文本换行
+	leftLabelStyle := lipgloss.NewStyle().Foreground(styles.TextColor)
+	if len(leftLabel) <= leftLabelWidth {
+		leftLabelStyle = leftLabelStyle.Width(leftLabelWidth).Align(lipgloss.Center)
+	}
+	leftLabelStyled := leftLabelStyle.Render(leftLabel)
 
-	rightLabelStyled := lipgloss.NewStyle().
-		Width(rightLabelWidth).
-		Align(lipgloss.Center).
-		Foreground(styles.TextColor).
-		Render(rightLabel)
+	rightLabelStyle := lipgloss.NewStyle().Foreground(styles.TextColor)
+	if len(rightLabel) <= rightLabelWidth {
+		rightLabelStyle = rightLabelStyle.Width(rightLabelWidth).Align(lipgloss.Center)
+	}
+	rightLabelStyled := rightLabelStyle.Render(rightLabel)
 
 	bottomLabels := lipgloss.JoinHorizontal(lipgloss.Top, leftLabelStyled, rightLabelStyled)
 
@@ -259,8 +318,8 @@ func (m Model) renderInfoPanel() string {
 			Italic(true).
 			Width(40)
 
-		sentence := fmt.Sprintf("Given that %s, the probability that %s is %.2f%%",
-			m.DescB, m.DescA, posterior*100)
+		sentence := fmt.Sprintf("Given that %s, the probability that %s is %s%%",
+			m.DescB, m.DescA, formatPercent(posterior))
 		descRendered := descStyle.Render(sentence)
 		parts = append(parts, descRendered)
 		parts = append(parts, "") // 空行分隔
@@ -268,12 +327,12 @@ func (m Model) renderInfoPanel() string {
 
 	// 左侧先验概率
 	leftLabel := styles.LabelStyle.Render("Left P(A):")
-	leftValue := styles.ValueStyle.Render(fmt.Sprintf("%.1f%%", m.PriorA*100))
+	leftValue := styles.ValueStyle.Render(fmt.Sprintf("%s%%", formatPercent(m.PriorA)))
 	leftInfo := lipgloss.JoinHorizontal(lipgloss.Left, leftLabel, " ", leftValue)
 
 	// 右侧先验概率
 	rightLabel := styles.LabelStyle.Render("Right P(¬A):")
-	rightValue := styles.ValueStyle.Render(fmt.Sprintf("%.1f%%", (1-m.PriorA)*100))
+	rightValue := styles.ValueStyle.Render(fmt.Sprintf("%s%%", formatPercent(1-m.PriorA)))
 	rightInfo := lipgloss.JoinHorizontal(lipgloss.Left, rightLabel, " ", rightValue)
 
 	// 组合先验概率信息
@@ -281,15 +340,15 @@ func (m Model) renderInfoPanel() string {
 
 	// 似然概率信息
 	likelihoodLabel := styles.LabelStyle.Render("Likelihood:")
-	likelihoodLeft := styles.ValueStyle.Render(fmt.Sprintf("P(B|A)=%.1f%%", m.LikelihoodA*100))
-	likelihoodRight := styles.ValueStyle.Render(fmt.Sprintf("P(B|¬A)=%.1f%%", m.LikelihoodNotA*100))
+	likelihoodLeft := styles.ValueStyle.Render(fmt.Sprintf("P(B|A)=%s%%", formatPercent(m.LikelihoodA)))
+	likelihoodRight := styles.ValueStyle.Render(fmt.Sprintf("P(B|¬A)=%s%%", formatPercent(m.LikelihoodNotA)))
 	likelihoodInfo := lipgloss.JoinHorizontal(lipgloss.Left,
 		likelihoodLabel, " ", likelihoodLeft, "  ", likelihoodRight)
 
 	// 后验概率信息
 	posterior := m.CalculatePosterior()
 	posteriorLabel := styles.LabelStyle.Render("Posterior:")
-	posteriorValue := styles.ValueStyle.Render(fmt.Sprintf("P(A|B) = %.2f%%", posterior*100))
+	posteriorValue := styles.ValueStyle.Render(fmt.Sprintf("P(A|B) = %s%%", formatPercent(posterior)))
 	posteriorInfo := lipgloss.JoinHorizontal(lipgloss.Left, posteriorLabel, " ", posteriorValue)
 
 	// 组合所有信息
