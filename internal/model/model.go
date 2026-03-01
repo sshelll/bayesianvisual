@@ -17,7 +17,19 @@ const (
 	StateInputLikelihoodNotA
 	StateInputDescA
 	StateInputDescB
+	StateIterationDescChoice      // 迭代时选择是否使用相同描述
+	StateNewCalculationDescChoice // 新运算时选择是否自定义描述
 )
+
+// IterationRecord 迭代记录
+type IterationRecord struct {
+	PriorA         float64
+	LikelihoodA    float64
+	LikelihoodNotA float64
+	Posterior      float64
+	DescA          string
+	DescB          string
+}
 
 // Model 应用模型
 type Model struct {
@@ -46,6 +58,12 @@ type Model struct {
 	DescB string // B 事件的描述
 	// 错误信息
 	ErrorMsg string
+	// 迭代历史记录
+	IterationHistory []IterationRecord
+	// 迭代描述选择
+	IterationDescCursor int // 0: 使用相同描述, 1: 输入新描述
+	// 新运算描述选择
+	NewCalcDescCursor int // 0: 使用默认 A/B, 1: 输入自定义描述
 }
 
 // Init 初始化
@@ -61,4 +79,17 @@ func (m Model) CalculatePosterior() float64 {
 		LikelihoodNotA: m.LikelihoodNotA,
 	}
 	return calc.CalculatePosterior()
+}
+
+// AddIterationRecord 添加迭代记录
+func (m *Model) AddIterationRecord() {
+	record := IterationRecord{
+		PriorA:         m.PriorA,
+		LikelihoodA:    m.LikelihoodA,
+		LikelihoodNotA: m.LikelihoodNotA,
+		Posterior:      m.CalculatePosterior(),
+		DescA:          m.DescA,
+		DescB:          m.DescB,
+	}
+	m.IterationHistory = append(m.IterationHistory, record)
 }
