@@ -150,9 +150,12 @@ func (m Model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 
-				// 非迭代模式，返回查看状态
-				m.State = StateViewing
-				m.TextInput.Blur()
+				// 非迭代模式（New Calculation），继续输入先验概率
+				m.State = StateInputPriorA
+				m.TextInput.SetValue("")
+				m.TextInput.CharLimit = 10
+				m.TextInput.SetWidth(20)
+				m.TextInput.Placeholder = "0.0 - 1.0"
 				return m, nil
 			}
 		}

@@ -30,6 +30,13 @@ cd bayesianvisual
 go build ./cmd/bayesianvisual
 ```
 
+or
+
+```bash
+git clone https://github.com/sshelll/bayesianvisual.git
+go install ./cmd/bayesianvisual
+```
+
 ## Usage
 
 Run the application:
@@ -67,6 +74,7 @@ P(A|B) = P(B|A) × P(A) / P(B)
 ```
 
 Where:
+
 - **P(A)**: Prior probability (left side)
 - **P(B|A)**: Likelihood given A (blue area on left)
 - **P(B|¬A)**: Likelihood given not A (blue area on right)
@@ -75,4 +83,3 @@ Where:
 ## License
 
 MIT
-
