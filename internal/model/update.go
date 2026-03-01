@@ -1,10 +1,9 @@
 package model
 
 import (
-	"strconv"
-
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/shopspring/decimal"
 )
 
 // Update 更新模型
@@ -161,8 +160,10 @@ func (m Model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 		// 验证并保存概率输入
-		value, err := strconv.ParseFloat(m.TextInput.Value(), 64)
-		if err != nil || value < 0 || value > 1 {
+		value, err := decimal.NewFromString(m.TextInput.Value())
+		zero := decimal.Zero
+		one := decimal.NewFromInt(1)
+		if err != nil || value.LessThan(zero) || value.GreaterThan(one) {
 			m.ErrorMsg = "Invalid input. Please enter a value between 0 and 1."
 			m.TextInput.SetValue("")
 			return m, nil

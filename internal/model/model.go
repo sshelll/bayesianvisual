@@ -3,6 +3,7 @@ package model
 import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/shopspring/decimal"
 	"github.com/sshelll/bayesianvisual/internal/bayesian"
 )
 
@@ -23,10 +24,10 @@ const (
 
 // IterationRecord 迭代记录
 type IterationRecord struct {
-	PriorA         float64
-	LikelihoodA    float64
-	LikelihoodNotA float64
-	Posterior      float64
+	PriorA         decimal.Decimal
+	LikelihoodA    decimal.Decimal
+	LikelihoodNotA decimal.Decimal
+	Posterior      decimal.Decimal
 	DescA          string
 	DescB          string
 }
@@ -38,9 +39,9 @@ type Model struct {
 	Quitting bool
 	State    ViewState
 	// 贝叶斯参数
-	PriorA         float64 // P(A) 先验概率
-	LikelihoodA    float64 // P(B|A) 似然概率
-	LikelihoodNotA float64 // P(B|¬A) 似然概率
+	PriorA         decimal.Decimal // P(A) 先验概率
+	LikelihoodA    decimal.Decimal // P(B|A) 似然概率
+	LikelihoodNotA decimal.Decimal // P(B|¬A) 似然概率
 	// 正方形大小（可调整）
 	SquareSize int
 	// 菜单选择
@@ -50,9 +51,9 @@ type Model struct {
 	// 是否迭代模式
 	IterativeMode bool
 	// 临时存储输入值
-	TempPriorA         float64
-	TempLikelihoodA    float64
-	TempLikelihoodNotA float64
+	TempPriorA         decimal.Decimal
+	TempLikelihoodA    decimal.Decimal
+	TempLikelihoodNotA decimal.Decimal
 	// 事件描述
 	DescA string // A 事件的描述
 	DescB string // B 事件的描述
@@ -72,7 +73,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 // CalculatePosterior 计算后验概率 P(A|B)
-func (m Model) CalculatePosterior() float64 {
+func (m Model) CalculatePosterior() decimal.Decimal {
 	calc := bayesian.Calculator{
 		PriorA:         m.PriorA,
 		LikelihoodA:    m.LikelihoodA,

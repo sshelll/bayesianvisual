@@ -11,9 +11,10 @@ import (
 
 // formatPercent 格式化百分比，最多保留 4 位小数，自动去掉尾部的 0
 // 对于极小值，保留至少 2 位有效数字，避免显示为 0
-func formatPercent(value float64) string {
+func formatPercent(value decimal.Decimal) string {
 	// 转换为百分比
-	percent := decimal.NewFromFloat(value * 100)
+	hundred := decimal.NewFromInt(100)
+	percent := value.Mul(hundred)
 
 	// 四舍五入到 4 位小数
 	rounded := percent.Round(4)
@@ -202,7 +203,7 @@ func (m Model) renderInput() string {
 	case StateInputLikelihoodA:
 		if m.IterativeMode {
 			title = "📊 Iterative Calculation"
-			prompt = fmt.Sprintf("Previous P(A|B) = %.4f (used as new prior)\nP(B|A) - Likelihood:", m.TempPriorA)
+			prompt = fmt.Sprintf("Previous P(A|B) = %s%% (used as new prior)\nP(B|A) - Likelihood:", formatPercent(m.TempPriorA))
 		} else {
 			title = "📊 Enter Likelihood"
 			prompt = "P(B|A) - Likelihood given A:"
@@ -243,17 +244,21 @@ func (m Model) renderBayesianDiagram() string {
 	height := m.SquareSize
 	width := m.SquareSize * 2
 
-	// 计算分割位置
-	leftWidth := int(float64(width) * m.PriorA)
+	// 计算分割位置（将 decimal 转换为 float64 用于计算）
+	priorAFloat, _ := m.PriorA.Float64()
+	likelihoodAFloat, _ := m.LikelihoodA.Float64()
+	likelihoodNotAFloat, _ := m.LikelihoodNotA.Float64()
+
+	leftWidth := int(float64(width) * priorAFloat)
 	rightWidth := width - leftWidth
 
 	// 设置最小高度，确保文字可读
 	minHeight := 3
 
-	leftTopHeight := int(float64(height) * (1 - m.LikelihoodA))
+	leftTopHeight := int(float64(height) * (1 - likelihoodAFloat))
 	leftBottomHeight := height - leftTopHeight
 
-	rightTopHeight := int(float64(height) * (1 - m.LikelihoodNotA))
+	rightTopHeight := int(float64(height) * (1 - likelihoodNotAFloat))
 	rightBottomHeight := height - rightTopHeight
 
 	// 如果概率区域太小，设置最小高度
@@ -313,8 +318,9 @@ func (m Model) renderBayesianDiagram() string {
 
 	// 创建底部标签（在边框外侧）
 	// 每个标签对齐到对应矩形的下方
+	one := decimal.NewFromInt(1)
 	leftLabel := fmt.Sprintf("P(A)=%s%%", formatPercent(m.PriorA))
-	rightLabel := fmt.Sprintf("P(¬A)=%s%%", formatPercent(1-m.PriorA))
+	rightLabel := fmt.Sprintf("P(¬A)=%s%%", formatPercent(one.Sub(m.PriorA)))
 
 	// 计算标签需要的宽度，确保标签在矩形下方居中
 	// leftWidth 对应左侧矩形，rightWidth 对应右侧矩形
