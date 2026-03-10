@@ -94,7 +94,7 @@ func (m Model) renderViewing() string {
 
 	// 如果有历史记录，在下方显示
 	var historyPanel string
-	if len(m.IterationHistory) > 1 {
+	if len(m.IterationHistory) > 0 {
 		historyPanel = m.renderHistoryPanel()
 	}
 
@@ -470,8 +470,8 @@ func (m Model) renderInfoPanel() string {
 func (m Model) buildHistoryContent() string {
 	var parts []string
 
-	// 渲染所有历史记录（排除最新的一条）
-	endIdx := len(m.IterationHistory) - 1
+	// 渲染所有历史记录（包含最新的一条）
+	endIdx := len(m.IterationHistory)
 
 	for i := range endIdx {
 		record := m.IterationHistory[i]
@@ -513,7 +513,7 @@ func (m Model) renderHistoryPanel() string {
 
 	// 标题始终置顶，不随 viewport 滚动
 	historyTitle := styles.InfoSectionTitle.Render(
-		fmt.Sprintf("Iteration History (%d)", len(m.IterationHistory)-1))
+		fmt.Sprintf("Iteration History (%d)", len(m.IterationHistory)))
 	scrollHint := lipgloss.NewStyle().
 		Foreground(styles.DimTextColor).
 		Italic(true).
@@ -521,6 +521,153 @@ func (m Model) renderHistoryPanel() string {
 
 	titleLine := lipgloss.JoinHorizontal(lipgloss.Bottom, historyTitle, scrollHint)
 
-	content := lipgloss.JoinVertical(lipgloss.Left, divider, titleLine, m.HistoryViewport.View())
+	// 渲染折线图
+	chart := m.renderProbabilityChart()
+
+	content := lipgloss.JoinVertical(lipgloss.Left, divider, titleLine, chart, "", m.HistoryViewport.View())
 	return styles.HistoryPanelStyle.Render(content)
+}
+
+// renderProbabilityChart 渲染后验概率散点图
+func (m Model) renderProbabilityChart() string {
+	if len(m.IterationHistory) <= 1 {
+		return ""
+	}
+
+	// 只展示最后 10 条历史记录
+	history := m.IterationHistory
+	startIdx := 0
+	if len(history) > 10 {
+		startIdx = len(history) - 10
+		history = history[startIdx:]
+	}
+
+	// 收集后验概率百分比数据
+	n := len(history)
+	values := make([]float64, n)
+	labels := make([]string, n)
+	minVal, maxVal := 100.0, 0.0
+	for i, r := range history {
+		f, _ := r.Posterior.Float64()
+		values[i] = f * 100
+		pct, _ := r.Posterior.Mul(decimal.NewFromInt(100)).Float64()
+		labels[i] = fmt.Sprintf("%.2f", pct)
+		if values[i] < minVal {
+			minVal = values[i]
+		}
+		if values[i] > maxVal {
+			maxVal = values[i]
+		}
+	}
+
+	// 图表参数
+	chartHeight := 8
+	chartWidth := n // 每个数据点占一列
+
+	// 计算 Y 轴范围，留一点边距
+	yRange := maxVal - minVal
+	if yRange < 1 {
+		yRange = 1
+	}
+	yMin := minVal - yRange*0.1
+	yMax := maxVal + yRange*0.1
+	if yMin < 0 {
+		yMin = 0
+	}
+	if yMax > 100 {
+		yMax = 100
+	}
+	yRange = yMax - yMin
+
+	// Y 轴标签宽度
+	labelWidth := 8
+
+	// 构建图表网格
+	var lines []string
+
+	dotStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
+	probStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
+	axisStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
+
+	// 预计算每个数据点所在的行
+	dataRows := make([]int, chartWidth)
+	for col := range chartWidth {
+		dataRows[col] = int((yMax - values[col]) / yRange * float64(chartHeight))
+		dataRows[col] = max(0, min(dataRows[col], chartHeight-1))
+	}
+
+	// 预计算每列的显示宽度：" ●(xx.xx%)" 的可见字符宽度
+	// 点列格式: " ●(xx%%)" ，空列需要用同等宽度的空格填充
+	colWidths := make([]int, chartWidth)
+	for col := range chartWidth {
+		// " ●" = 2 可见字符宽度 + "(xx%%)" 的长度
+		probText := fmt.Sprintf("(%s%%)", labels[col])
+		colWidths[col] = 2 + len(probText) // " ●" 占 2 宽度（空格+●）
+	}
+
+	for row := range chartHeight {
+		// 当前行对应的 Y 值（从上到下递减）
+		yVal := yMax - (float64(row)+0.5)*yRange/float64(chartHeight)
+
+		// Y 轴标签
+		label := fmt.Sprintf("%6.1f%%", yVal)
+		label = labelStyle.Render(label)
+
+		// 绘制该行
+		var rowBuf strings.Builder
+		rowBuf.WriteString(label)
+		rowBuf.WriteString(axisStyle.Render(" │"))
+
+		for col := range chartWidth {
+			if dataRows[col] == row {
+				probText := fmt.Sprintf("(%s%%)", labels[col])
+				rowBuf.WriteString(dotStyle.Render(" ●"))
+				rowBuf.WriteString(probStyle.Render(probText))
+			} else {
+				rowBuf.WriteString(strings.Repeat(" ", colWidths[col]))
+			}
+		}
+
+		lines = append(lines, rowBuf.String())
+	}
+
+	// X 轴线
+	var xAxisBuf strings.Builder
+	xAxisBuf.WriteString(strings.Repeat(" ", labelWidth))
+	xAxisBuf.WriteString(axisStyle.Render(" └"))
+	for col := range chartWidth {
+		xAxisBuf.WriteString(axisStyle.Render(strings.Repeat("─", colWidths[col])))
+	}
+	lines = append(lines, xAxisBuf.String())
+
+	// X 轴标签（迭代编号）
+	var xLabelBuf strings.Builder
+	xLabelBuf.WriteString(strings.Repeat(" ", labelWidth+2))
+	for col := range chartWidth {
+		numStr := fmt.Sprintf("#%d", startIdx+col+1)
+		padding := colWidths[col] - len(numStr)
+		left := padding / 2
+		right := padding - left
+		xLabelBuf.WriteString(strings.Repeat(" ", left))
+		xLabelBuf.WriteString(labelStyle.Render(numStr))
+		xLabelBuf.WriteString(strings.Repeat(" ", right))
+	}
+	lines = append(lines, xLabelBuf.String())
+
+	// Caption
+	captionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
+	caption := captionStyle.Render("P(A|B) Posterior Trend (%)")
+	lines = append(lines, strings.Repeat(" ", labelWidth+2)+caption)
+
+	graph := strings.Join(lines, "\n")
+
+	// 用圆角边框包裹
+	bordered := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("238")).
+		Padding(0, 1).
+		Render(graph)
+
+	return bordered
 }
