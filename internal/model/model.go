@@ -26,12 +26,12 @@ const (
 
 // IterationRecord 迭代记录
 type IterationRecord struct {
-	PriorA         decimal.Decimal
-	LikelihoodA    decimal.Decimal
-	LikelihoodNotA decimal.Decimal
-	Posterior      decimal.Decimal
-	DescA          string
-	DescB          string
+	PriorA         decimal.Decimal `json:"-"`
+	LikelihoodA    decimal.Decimal `json:"likelihood_a"`
+	LikelihoodNotA decimal.Decimal `json:"likelihood_not_a"`
+	Posterior      decimal.Decimal `json:"-"`
+	DescA          string          `json:"-"`
+	DescB          string          `json:"desc_b"`
 }
 
 // Model 应用模型

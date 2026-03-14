@@ -12,6 +12,7 @@ import (
 
 var (
 	importFile string
+	textView   bool
 )
 
 var rootCmd = &cobra.Command{
@@ -23,6 +24,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().StringVarP(&importFile, "import", "i", "", "Import iteration history from JSON file")
+	rootCmd.Flags().BoolVar(&textView, "text", false, "Print iteration history as plain text (requires -i)")
 }
 
 func run(cmd *cobra.Command, args []string) {
@@ -41,6 +43,15 @@ func run(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Failed to import history: %v\n", err)
 			os.Exit(1)
 		}
+
+		// --text 模式：以纯文本打印历史记录后退出
+		if textView {
+			fmt.Print(m.BuildTextView())
+			return
+		}
+	} else if textView {
+		fmt.Fprintln(os.Stderr, "--text requires -i to import a file")
+		os.Exit(1)
 	}
 
 	if _, err := tea.NewProgram(m).Run(); err != nil {

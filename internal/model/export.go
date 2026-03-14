@@ -5,11 +5,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/shopspring/decimal"
+	"github.com/sshelll/bayesianvisual/internal/bayesian"
 )
 
 // ExportData 导出数据结构
 type ExportData struct {
 	Version          string            `json:"version"`
+	InitialPriorA    decimal.Decimal   `json:"initial_prior_a"`
+	DescA            string            `json:"desc_a"`
 	IterationHistory []IterationRecord `json:"iteration_history"`
 }
 
@@ -25,8 +30,17 @@ func expandPath(path string) string {
 
 // ExportToJSON 导出迭代历史到 JSON 文件
 func (m *Model) ExportToJSON(path string) error {
+	var initialPriorA decimal.Decimal
+	var descA string
+	if len(m.IterationHistory) > 0 {
+		initialPriorA = m.IterationHistory[0].PriorA
+		descA = m.IterationHistory[0].DescA
+	}
+
 	data := ExportData{
 		Version:          "1.0",
+		InitialPriorA:    initialPriorA,
+		DescA:            descA,
 		IterationHistory: m.IterationHistory,
 	}
 
@@ -55,8 +69,23 @@ func (m *Model) LoadFromJSON(path string) error {
 		return err
 	}
 
-	// 加载历史记录
+	// 加载历史记录，并实时计算 PriorA 和 Posterior
 	m.IterationHistory = data.IterationHistory
+	for i := range m.IterationHistory {
+		r := &m.IterationHistory[i]
+		r.DescA = data.DescA
+		if i == 0 {
+			r.PriorA = data.InitialPriorA
+		} else {
+			r.PriorA = m.IterationHistory[i-1].Posterior
+		}
+		calc := bayesian.Calculator{
+			PriorA:         r.PriorA,
+			LikelihoodA:    r.LikelihoodA,
+			LikelihoodNotA: r.LikelihoodNotA,
+		}
+		r.Posterior = calc.CalculatePosterior()
+	}
 
 	// 如果有历史记录，使用最后一条记录的数据作为当前状态
 	if len(m.IterationHistory) > 0 {
